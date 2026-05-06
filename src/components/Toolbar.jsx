@@ -1,4 +1,4 @@
-function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNew, canUndo, canRedo, shapesVisible, onToggleShapes }) {
+function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNew, canUndo, canRedo, shapesVisible, onToggleShapes, downloadBlocked }) {
   return (
     <div style={{
       position: 'fixed',
@@ -14,6 +14,14 @@ function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNe
       padding: '0 16px',
       zIndex: 10
     }}>
+
+      <style>{`
+        @keyframes blink-toggle {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.2; }
+        }
+        .blink { animation: blink-toggle 0.8s ease-in-out infinite; }
+      `}</style>
 
       {/* Strumenti disegno */}
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -120,6 +128,7 @@ function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNe
         <button
           onClick={onToggleShapes}
           title="Mostra/nascondi forme"
+          className={downloadBlocked ? 'blink' : ''}
           style={{
             width: '36px',
             height: '36px',
@@ -134,14 +143,16 @@ function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNe
 
         <button
           onClick={onDownload}
-          title="Scarica"
+          title={downloadBlocked ? 'Mostra le forme per scaricare' : 'Scarica'}
+          disabled={downloadBlocked}
           style={{
             width: '36px',
             height: '36px',
             border: '1px solid #ccc',
             background: 'white',
-            cursor: 'pointer',
-            fontSize: '18px'
+            cursor: downloadBlocked ? 'default' : 'pointer',
+            fontSize: '18px',
+            opacity: downloadBlocked ? 0.3 : 1
           }}
         >
           ↓

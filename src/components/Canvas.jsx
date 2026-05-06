@@ -188,6 +188,8 @@ function Canvas({ file, isTouch, onNew }) {
 
   const onMouseDown = (e) => {
     if (!imageEl) return
+    // In modalità nascondi forme il canvas è in sola lettura.
+    if (!shapesVisible) return
 
     const pos = getPos(e, canvasRef.current)
 
@@ -275,7 +277,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const handleDownload = () => {
-    showShapes()
+    if (!shapesVisible) return
     const canvas = canvasRef.current
     const link = document.createElement('a')
     link.download = 'documento-annotato.png'
@@ -289,6 +291,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const getCursor = () => {
+    if (!shapesVisible) return 'default'
     if (tool === 'delete') return 'not-allowed'
     if (isDrawingState) return 'nw-resize'
     return 'crosshair'
@@ -333,6 +336,7 @@ function Canvas({ file, isTouch, onNew }) {
           canRedo={canRedo}
           shapesVisible={shapesVisible}
           onToggleShapes={handleToggleShapes}
+          downloadBlocked={!shapesVisible}
         />
       )}
 
