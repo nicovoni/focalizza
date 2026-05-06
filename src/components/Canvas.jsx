@@ -8,6 +8,7 @@ function Canvas({ file, isTouch, onNew }) {
   const [tool, setTool] = useState('rect')
   const [error, setError] = useState(null)
   const isDrawing = useRef(false)
+  const [isDrawingState, setIsDrawingState] = useState(false)
   const startPos = useRef({ x: 0, y: 0 })
   const shapes = useRef([])
   const redoStack = useRef([])
@@ -190,6 +191,7 @@ function Canvas({ file, isTouch, onNew }) {
     }
 
     isDrawing.current = true
+    setIsDrawingState(true)
     startPos.current = pos
   }
 
@@ -202,6 +204,7 @@ function Canvas({ file, isTouch, onNew }) {
   const onMouseUp = (e) => {
     if (!isDrawing.current || !imageEl) return
     isDrawing.current = false
+    setIsDrawingState(false)
     const endPos = getPos(e, canvasRef.current)
 
     const w = Math.abs(endPos.x - startPos.current.x)
@@ -225,6 +228,7 @@ function Canvas({ file, isTouch, onNew }) {
   const onMouseLeave = () => {
     if (!isDrawing.current) return
     isDrawing.current = false
+    setIsDrawingState(false)
     redraw()
   }
 
@@ -269,6 +273,7 @@ function Canvas({ file, isTouch, onNew }) {
   const getCursor = () => {
     if (tool === 'delete') return 'not-allowed'
     if (tool === 'preview') return 'default'
+    if (isDrawingState) return 'nw-resize'
     return 'crosshair'
   }
 
