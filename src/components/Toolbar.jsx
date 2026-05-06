@@ -1,4 +1,4 @@
-function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNew, canUndo, canRedo }) {
+function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNew, canUndo, canRedo, shapesVisible, onToggleShapes }) {
   return (
     <div style={{
       position: 'fixed',
@@ -115,21 +115,21 @@ function Toolbar({ tool, onToolChange, onDownload, onUndo, onRedo, onClear, onNe
         </button>
       </div>
 
-      {/* Anteprima, Download e Nuovo */}
+      {/* Mostra/nascondi, Download e Nuovo */}
       <div style={{ display: 'flex', gap: '8px' }}>
         <button
-          onClick={() => onToolChange('preview')}
-          title="Anteprima documento"
+          onClick={onToggleShapes}
+          title="Mostra/nascondi forme"
           style={{
             width: '36px',
             height: '36px',
-            border: tool === 'preview' ? '2px solid black' : '1px solid #ccc',
-            background: tool === 'preview' ? '#f0f0f0' : 'white',
+            border: shapesVisible ? '1px solid #ccc' : '2px solid black',
+            background: shapesVisible ? 'white' : '#f0f0f0',
             cursor: 'pointer',
             fontSize: '18px'
           }}
         >
-          👁
+          {shapesVisible ? '👁' : '🙈'}
         </button>
 
         <button

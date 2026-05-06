@@ -7,6 +7,7 @@ function Canvas({ file, isTouch, onNew }) {
   const [imageEl, setImageEl] = useState(null)
   const [tool, setTool] = useState('rect')
   const [error, setError] = useState(null)
+  const [shapesVisible, setShapesVisible] = useState(true)
   const isDrawing = useRef(false)
   const [isDrawingState, setIsDrawingState] = useState(false)
   const startPos = useRef({ x: 0, y: 0 })
@@ -32,12 +33,12 @@ function Canvas({ file, isTouch, onNew }) {
     }
 
     if (file.type === 'pdf') {
-      // BUG FIX 3: pass ArrayBuffer instead of base64 dataUrl to avoid
-      // keeping the entire file in memory twice.
+      // BUG FIX 3: pass ArrayBuffer invece di base64 dataUrl per evitare
+      // di tenere l'intero file in memoria due volte.
       convertPdfToImage(file.arrayBuffer)
         .then((img) => setImageEl(img))
-        // BUG FIX 5: catch PDF errors (encrypted, corrupted, worker failure)
-        // and surface them to the user instead of silently hanging.
+        // BUG FIX 5: intercetta errori PDF (cifrati, corrotti, worker fallito)
+        // e li mostra all'utente invece di bloccarsi silenziosamente.
         .catch((err) => {
           console.error('Errore PDF:', err)
           setError('Impossibile aprire il PDF. Il file potrebbe essere protetto da password o danneggiato.')
@@ -45,8 +46,8 @@ function Canvas({ file, isTouch, onNew }) {
     }
   }, [file])
 
-  // BUG FIX 2: wrap redraw in useCallback so it always closes over the
-  // current `tool` and `imageEl` values, eliminating stale-closure redraws.
+  // BUG FIX 2: redraw in useCallback per chiudere sempre sui valori
+  // correnti di `tool`, `imageEl` e `shapesVisible`, eliminando stale closure.
   const redraw = useCallback((previewStart, previewEnd, currentTool) => {
     if (!imageEl) return
     const canvas = canvasRef.current
@@ -56,8 +57,8 @@ function Canvas({ file, isTouch, onNew }) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Modalità anteprima — mostra documento originale
-    if (activeTool === 'preview') {
+    // Se le forme sono nascoste, mostra solo il documento originale
+    if (!shapesVisible) {
       ctx.drawImage(imageEl, 0, 0)
       return
     }
@@ -100,7 +101,7 @@ function Canvas({ file, isTouch, onNew }) {
       ctx.drawImage(imageEl, 0, 0)
       ctx.restore()
     })
-  }, [imageEl, tool])
+  }, [imageEl, tool, shapesVisible])
 
   useEffect(() => {
     if (!imageEl) return
@@ -121,6 +122,11 @@ function Canvas({ file, isTouch, onNew }) {
 
     redraw()
   }, [imageEl, redraw])
+
+  // Ridisegna ogni volta che shapesVisible cambia
+  useEffect(() => {
+    redraw()
+  }, [shapesVisible, redraw])
 
   const drawShape = (ctx, shape) => {
     const x = Math.min(shape.start.x, shape.end.x)
@@ -171,15 +177,18 @@ function Canvas({ file, isTouch, onNew }) {
     redraw(null, null, newTool)
   }
 
+  const handleToggleShapes = () => {
+    setShapesVisible(prev => !prev)
+  }
+
   const onMouseDown = (e) => {
     if (!imageEl) return
-    if (tool === 'preview') return
 
     const pos = getPos(e, canvasRef.current)
 
     if (tool === 'delete') {
-      // BUG FIX 4: only clear the redo stack when a shape was actually
-      // removed — not on every click, even misses.
+      // BUG FIX 4: cancella il redo stack solo se una forma è stata
+      // effettivamente rimossa, non ad ogni click.
       const before = shapes.current.length
       shapes.current = shapes.current.filter(s => !isInsideShape(s, pos))
       if (shapes.current.length !== before) {
@@ -223,8 +232,8 @@ function Canvas({ file, isTouch, onNew }) {
     redraw()
   }
 
-  // BUG FIX 1: cancel the current stroke when the mouse leaves the canvas,
-  // so isDrawing never stays stuck in true after the pointer exits.
+  // BUG FIX 1: annulla il tratto se il mouse esce dal canvas,
+  // così isDrawing non rimane bloccato su true.
   const onMouseLeave = () => {
     if (!isDrawing.current) return
     isDrawing.current = false
@@ -272,7 +281,6 @@ function Canvas({ file, isTouch, onNew }) {
 
   const getCursor = () => {
     if (tool === 'delete') return 'not-allowed'
-    if (tool === 'preview') return 'default'
     if (isDrawingState) return 'nw-resize'
     return 'crosshair'
   }
@@ -314,6 +322,8 @@ function Canvas({ file, isTouch, onNew }) {
           onNew={handleNew}
           canUndo={canUndo}
           canRedo={canRedo}
+          shapesVisible={shapesVisible}
+          onToggleShapes={handleToggleShapes}
         />
       )}
 
@@ -341,15 +351,14 @@ function Canvas({ file, isTouch, onNew }) {
   )
 }
 
-// BUG FIX 3: accept an ArrayBuffer instead of a base64 dataUrl.
-// pdfjs can consume raw bytes directly, avoiding keeping the entire
-// file in memory twice (once as ArrayBuffer, once as base64 string).
+// BUG FIX 3: accetta un ArrayBuffer invece di un base64 dataUrl.
+// pdfjs consuma i byte raw direttamente, evitando di tenere l'intero
+// file in memoria due volte.
 async function convertPdfToImage(arrayBuffer) {
   const pdfjsLib = await import('pdfjs-dist')
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
-  // Pass the raw bytes — pdfjs accepts { data: ArrayBuffer }
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
   const pdf = await loadingTask.promise
   const page = await pdf.getPage(1)
