@@ -172,7 +172,12 @@ function Canvas({ file, isTouch, onNew }) {
     }
   }
 
+  // Riporta le forme in vista ogni volta che l'utente interagisce con
+  // qualsiasi pulsante della toolbar (eccetto il toggle stesso).
+  const showShapes = () => setShapesVisible(true)
+
   const handleToolChange = (newTool) => {
+    showShapes()
     setTool(newTool)
     redraw(null, null, newTool)
   }
@@ -242,6 +247,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const handleUndo = () => {
+    showShapes()
     if (shapes.current.length === 0) return
     const last = shapes.current[shapes.current.length - 1]
     redoStack.current = [...redoStack.current, last]
@@ -251,6 +257,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const handleRedo = () => {
+    showShapes()
     if (redoStack.current.length === 0) return
     const last = redoStack.current[redoStack.current.length - 1]
     shapes.current = [...shapes.current, last]
@@ -260,6 +267,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const handleClear = () => {
+    showShapes()
     shapes.current = []
     redoStack.current = []
     redraw()
@@ -267,6 +275,7 @@ function Canvas({ file, isTouch, onNew }) {
   }
 
   const handleDownload = () => {
+    showShapes()
     const canvas = canvasRef.current
     const link = document.createElement('a')
     link.download = 'documento-annotato.png'
