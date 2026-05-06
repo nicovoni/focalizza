@@ -12,15 +12,32 @@ function UploadArea({ onFileLoaded }) {
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      onFileLoaded({
-        dataUrl: e.target.result,
-        type: isPDF ? 'pdf' : 'image',
-        name: file.name
-      })
+    if (isImage) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        onFileLoaded({
+          dataUrl: e.target.result,
+          type: 'image',
+          name: file.name
+        })
+      }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
+
+    if (isPDF) {
+      // BUG FIX 3 (companion change): read PDFs as ArrayBuffer instead of
+      // base64 dataUrl so Canvas can pass raw bytes directly to pdfjs,
+      // avoiding keeping the entire file in memory twice.
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        onFileLoaded({
+          arrayBuffer: e.target.result,
+          type: 'pdf',
+          name: file.name
+        })
+      }
+      reader.readAsArrayBuffer(file)
+    }
   }
 
   const handleDrop = (e) => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Toolbar from './Toolbar'
 
 function Canvas({ file, isTouch, onNew }) {
@@ -6,6 +6,7 @@ function Canvas({ file, isTouch, onNew }) {
   const blurCanvasRef = useRef(null)
   const [imageEl, setImageEl] = useState(null)
   const [tool, setTool] = useState('rect')
+  const [error, setError] = useState(null)
   const isDrawing = useRef(false)
   const startPos = useRef({ x: 0, y: 0 })
   const shapes = useRef([])
@@ -20,42 +21,37 @@ function Canvas({ file, isTouch, onNew }) {
 
   useEffect(() => {
     if (!file) return
+    setError(null)
+
     if (file.type === 'image') {
       const img = new Image()
       img.onload = () => setImageEl(img)
+      img.onerror = () => setError('Impossibile caricare l\'immagine.')
       img.src = file.dataUrl
     }
+
     if (file.type === 'pdf') {
-      convertPdfToImage(file.dataUrl).then((img) => setImageEl(img))
+      // BUG FIX 3: pass ArrayBuffer instead of base64 dataUrl to avoid
+      // keeping the entire file in memory twice.
+      convertPdfToImage(file.arrayBuffer)
+        .then((img) => setImageEl(img))
+        // BUG FIX 5: catch PDF errors (encrypted, corrupted, worker failure)
+        // and surface them to the user instead of silently hanging.
+        .catch((err) => {
+          console.error('Errore PDF:', err)
+          setError('Impossibile aprire il PDF. Il file potrebbe essere protetto da password o danneggiato.')
+        })
     }
   }, [file])
 
-  useEffect(() => {
-    if (!imageEl) return
-    const canvas = canvasRef.current
-    const blurCanvas = blurCanvasRef.current
-
-    canvas.width = imageEl.width
-    canvas.height = imageEl.height
-    blurCanvas.width = imageEl.width
-    blurCanvas.height = imageEl.height
-
-    const blurCtx = blurCanvas.getContext('2d')
-    blurCtx.filter = 'blur(8px)'
-    blurCtx.drawImage(imageEl, 0, 0)
-    blurCtx.filter = 'none'
-    blurCtx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-    blurCtx.fillRect(0, 0, blurCanvas.width, blurCanvas.height)
-
-    redraw()
-  }, [imageEl])
-
-  const redraw = (previewStart, previewEnd, currentTool) => {
+  // BUG FIX 2: wrap redraw in useCallback so it always closes over the
+  // current `tool` and `imageEl` values, eliminating stale-closure redraws.
+  const redraw = useCallback((previewStart, previewEnd, currentTool) => {
     if (!imageEl) return
     const canvas = canvasRef.current
     const blurCanvas = blurCanvasRef.current
     const ctx = canvas.getContext('2d')
-    const activeTool = currentTool || tool
+    const activeTool = currentTool ?? tool
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -103,7 +99,27 @@ function Canvas({ file, isTouch, onNew }) {
       ctx.drawImage(imageEl, 0, 0)
       ctx.restore()
     })
-  }
+  }, [imageEl, tool])
+
+  useEffect(() => {
+    if (!imageEl) return
+    const canvas = canvasRef.current
+    const blurCanvas = blurCanvasRef.current
+
+    canvas.width = imageEl.width
+    canvas.height = imageEl.height
+    blurCanvas.width = imageEl.width
+    blurCanvas.height = imageEl.height
+
+    const blurCtx = blurCanvas.getContext('2d')
+    blurCtx.filter = 'blur(8px)'
+    blurCtx.drawImage(imageEl, 0, 0)
+    blurCtx.filter = 'none'
+    blurCtx.fillStyle = 'rgba(0, 0, 0, 0.45)'
+    blurCtx.fillRect(0, 0, blurCanvas.width, blurCanvas.height)
+
+    redraw()
+  }, [imageEl, redraw])
 
   const drawShape = (ctx, shape) => {
     const x = Math.min(shape.start.x, shape.end.x)
@@ -161,10 +177,15 @@ function Canvas({ file, isTouch, onNew }) {
     const pos = getPos(e, canvasRef.current)
 
     if (tool === 'delete') {
+      // BUG FIX 4: only clear the redo stack when a shape was actually
+      // removed — not on every click, even misses.
+      const before = shapes.current.length
       shapes.current = shapes.current.filter(s => !isInsideShape(s, pos))
-      redoStack.current = []
+      if (shapes.current.length !== before) {
+        redoStack.current = []
+        updateHistory()
+      }
       redraw()
-      updateHistory()
       return
     }
 
@@ -196,6 +217,14 @@ function Canvas({ file, isTouch, onNew }) {
       updateHistory()
     }
 
+    redraw()
+  }
+
+  // BUG FIX 1: cancel the current stroke when the mouse leaves the canvas,
+  // so isDrawing never stays stuck in true after the pointer exits.
+  const onMouseLeave = () => {
+    if (!isDrawing.current) return
+    isDrawing.current = false
     redraw()
   }
 
@@ -243,6 +272,30 @@ function Canvas({ file, isTouch, onNew }) {
     return 'crosshair'
   }
 
+  if (error) {
+    return (
+      <div style={{
+        width: '100vw',
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '12px',
+        color: '#c0392b'
+      }}>
+        <span style={{ fontSize: '32px' }}>⚠️</span>
+        <span style={{ fontSize: '15px' }}>{error}</span>
+        <button
+          onClick={onNew}
+          style={{ marginTop: '8px', padding: '8px 16px', cursor: 'pointer' }}
+        >
+          Torna all'inizio
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{ position: 'relative' }}>
       {!isTouch && (
@@ -269,6 +322,7 @@ function Canvas({ file, isTouch, onNew }) {
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onMouseLeave={onMouseLeave}
         style={{
           maxWidth: '100vw',
           maxHeight: '100vh',
@@ -282,11 +336,16 @@ function Canvas({ file, isTouch, onNew }) {
   )
 }
 
-async function convertPdfToImage(dataUrl) {
+// BUG FIX 3: accept an ArrayBuffer instead of a base64 dataUrl.
+// pdfjs can consume raw bytes directly, avoiding keeping the entire
+// file in memory twice (once as ArrayBuffer, once as base64 string).
+async function convertPdfToImage(arrayBuffer) {
   const pdfjsLib = await import('pdfjs-dist')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
-  const loadingTask = pdfjsLib.getDocument(dataUrl)
+  // Pass the raw bytes — pdfjs accepts { data: ArrayBuffer }
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
   const pdf = await loadingTask.promise
   const page = await pdf.getPage(1)
 
@@ -302,7 +361,10 @@ async function convertPdfToImage(dataUrl) {
 
   const img = new Image()
   img.src = offscreen.toDataURL()
-  await new Promise((res) => (img.onload = res))
+  await new Promise((res, rej) => {
+    img.onload = res
+    img.onerror = rej
+  })
 
   return img
 }
