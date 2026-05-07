@@ -11,14 +11,20 @@ function Canvas({ file, isTouch, onNew }) {
   const isDrawing = useRef(false)
   const [isDrawingState, setIsDrawingState] = useState(false)
   const startPos = useRef({ x: 0, y: 0 })
+
+  // History unificata: ogni elemento è { type: 'add'|'delete', shape }
+  // - 'add'    → l'utente ha disegnato una forma
+  // - 'delete' → l'utente ha eliminato una forma
+  // Undo inverte l'ultima azione; redo la ripristina.
   const shapes = useRef([])
-  const redoStack = useRef([])
+  const history = useRef([])   // stack delle azioni eseguite
+  const future = useRef([])    // stack delle azioni annullate (per redo)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
   const updateHistory = () => {
-    setCanUndo(shapes.current.length > 0)
-    setCanRedo(redoStack.current.length > 0)
+    setCanUndo(history.current.length > 0)
+    setCanRedo(future.current.length > 0)
   }
 
   useEffect(() => {
@@ -194,15 +200,16 @@ function Canvas({ file, isTouch, onNew }) {
     const pos = getPos(e, canvasRef.current)
 
     if (tool === 'delete') {
-      // BUG FIX 4: cancella il redo stack solo se una forma è stata
-      // effettivamente rimossa, non ad ogni click.
-      const before = shapes.current.length
-      shapes.current = shapes.current.filter(s => !isInsideShape(s, pos))
-      if (shapes.current.length !== before) {
-        redoStack.current = []
+      const toDelete = shapes.current.filter(s => isInsideShape(s, pos))
+      if (toDelete.length > 0) {
+        // Registra ogni forma eliminata come azione 'delete' nello history stack.
+        // Questo permette a undo di ripristinarle nell'ordine corretto.
+        toDelete.forEach(s => history.current.push({ type: 'delete', shape: s }))
+        shapes.current = shapes.current.filter(s => !isInsideShape(s, pos))
+        future.current = []
         updateHistory()
+        redraw()
       }
-      redraw()
       return
     }
 
@@ -227,12 +234,11 @@ function Canvas({ file, isTouch, onNew }) {
     const h = Math.abs(endPos.y - startPos.current.y)
 
     if (w > 5 && h > 5) {
-      shapes.current = [...shapes.current, {
-        start: startPos.current,
-        end: endPos,
-        tool
-      }]
-      redoStack.current = []
+      const newShape = { start: startPos.current, end: endPos, tool }
+      shapes.current = [...shapes.current, newShape]
+      // Registra l'aggiunta nello history stack e azzera il future.
+      history.current.push({ type: 'add', shape: newShape })
+      future.current = []
       updateHistory()
     }
 
@@ -250,20 +256,33 @@ function Canvas({ file, isTouch, onNew }) {
 
   const handleUndo = () => {
     showShapes()
-    if (shapes.current.length === 0) return
-    const last = shapes.current[shapes.current.length - 1]
-    redoStack.current = [...redoStack.current, last]
-    shapes.current = shapes.current.slice(0, -1)
+    if (history.current.length === 0) return
+    const action = history.current.pop()
+    future.current.push(action)
+    if (action.type === 'add') {
+      // L'ultima azione era un'aggiunta: rimuovi la forma.
+      shapes.current = shapes.current.filter(s => s !== action.shape)
+    } else if (action.type === 'delete') {
+      // L'ultima azione era un'eliminazione: reinserisci la forma
+      // nella posizione originale (in fondo, poiché era l'ultima presente).
+      shapes.current = [...shapes.current, action.shape]
+    }
     redraw()
     updateHistory()
   }
 
   const handleRedo = () => {
     showShapes()
-    if (redoStack.current.length === 0) return
-    const last = redoStack.current[redoStack.current.length - 1]
-    shapes.current = [...shapes.current, last]
-    redoStack.current = redoStack.current.slice(0, -1)
+    if (future.current.length === 0) return
+    const action = future.current.pop()
+    history.current.push(action)
+    if (action.type === 'add') {
+      // Ripristina l'aggiunta.
+      shapes.current = [...shapes.current, action.shape]
+    } else if (action.type === 'delete') {
+      // Ripristina l'eliminazione.
+      shapes.current = shapes.current.filter(s => s !== action.shape)
+    }
     redraw()
     updateHistory()
   }
@@ -271,7 +290,8 @@ function Canvas({ file, isTouch, onNew }) {
   const handleClear = () => {
     showShapes()
     shapes.current = []
-    redoStack.current = []
+    history.current = []
+    future.current = []
     redraw()
     updateHistory()
   }
